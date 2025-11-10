@@ -68,7 +68,7 @@ def clean_score(score_value):
     except (ValueError, TypeError):
         return None
 
-def load_and_process_data(df, win_points=3, draw_points=2, loss_points=1):
+def load_and_process_data(df, win_points=3, draw_points=2, loss_points=1, bonus_3_wins=1, bonus_4_wins=2):
     """
     Process the padel match data and calculate statistics.
     """
@@ -177,13 +177,13 @@ def load_and_process_data(df, win_points=3, draw_points=2, loss_points=1):
                     player_stats[player]['losses'] += 1
                     player_stats[player]['total_points'] += loss_points
     
-    # Calculate bonus points
+    # Calculate bonus points using configurable values
     for player in player_stats:
         for date, wins_count in player_stats[player]['wins_by_date'].items():
             if wins_count >= 4:
-                player_stats[player]['bonus_points'] += 2
+                player_stats[player]['bonus_points'] += bonus_4_wins
             elif wins_count == 3:
-                player_stats[player]['bonus_points'] += 1
+                player_stats[player]['bonus_points'] += bonus_3_wins
     
     print(f"Total matches processed: {total_matches}")
     print(f"Draws detected: {len(draws_detected)}")
@@ -438,6 +438,65 @@ def create_chart3_timeline_detailed(df, player_stats, all_dates):
     
     return fig
 
+def create_chart4_average_points(player_stats):
+    """
+    Chart 4: Bar chart showing average points per participation (match played) for each player.
+    """
+    # Calculate average points per participation for each player
+    average_data = []
+    for player in player_stats:
+        stats = player_stats[player]
+        total_points = stats['total_points'] + stats['bonus_points']
+        matches_played = stats['wins'] + stats['draws'] + stats['losses']
+        
+        if matches_played > 0:
+            avg_points = total_points / matches_played
+            average_data.append({
+                'Player': player,
+                'Average Points': round(avg_points, 2),
+                'Total Points': total_points,
+                'Matches Played': matches_played
+            })
+    
+    # Sort by average points (descending)
+    average_data.sort(key=lambda x: x['Average Points'], reverse=True)
+    
+    if not average_data:
+        return None
+    
+    players = [item['Player'] for item in average_data]
+    avg_points = [item['Average Points'] for item in average_data]
+    total_points = [item['Total Points'] for item in average_data]
+    matches_played = [item['Matches Played'] for item in average_data]
+    
+    fig = go.Figure()
+    
+    fig.add_trace(go.Bar(
+        x=players,
+        y=avg_points,
+        marker_color='#e67e22',
+        text=[f'{p:.2f}<br>({tp} pts<br>{mp} games)' for p, tp, mp in zip(avg_points, total_points, matches_played)],
+        textposition='outside',
+        textfont=dict(size=10),
+        hovertemplate='<b>%{x}</b><br>' +
+                      'Average Points: %{y:.2f}<br>' +
+                      'Total Points: %{customdata[0]}<br>' +
+                      'Matches Played: %{customdata[1]}<br>' +
+                      '<extra></extra>',
+        customdata=list(zip(total_points, matches_played))
+    ))
+    
+    fig.update_layout(
+        title='Average Points per Participation (Match) - Higher is Better',
+        xaxis_title='Players',
+        yaxis_title='Average Points per Match',
+        font=dict(size=12),
+        height=500,
+        hovermode='x unified'
+    )
+    
+    return fig
+
 # Streamlit App
 def main():
     st.set_page_config(page_title="Padel Statistics Dashboard", layout="wide")
@@ -463,10 +522,24 @@ def main():
     st.sidebar.write(f"😔 Loss: {loss_points} points")
     st.sidebar.write(f"🎁 Bonus: Daily wins bonus system")
     
+    # Add preset suggestions in write format
+    st.sidebar.write("**Common Presets:**")
+    st.sidebar.write("- 🏆 **Traditional**: 3-2-1 (Win=3, Draw=2, Loss=1)")
+    st.sidebar.write("- ⚽ **Sports**: 2-1-0 (Win=2, Draw=1, Loss=0)")
+    st.sidebar.write("- 🏀 **Basketball**: 2-1-0 with bonus system")
+    
     # Bonus system configuration
-    st.sidebar.write(f"**Bonus System:**")
-    st.sidebar.write(f"🎯 3 wins same day = +1 bonus point")
-    st.sidebar.write(f"🌟 4+ wins same day = +2 bonus points")
+    st.sidebar.subheader("🎁 Bonus System")
+    
+    # Configurable bonus levels
+    st.sidebar.write("**Daily Wins Bonus:**")
+    bonus_3_wins = st.sidebar.number_input("Points for 3 wins same day", min_value=0, max_value=5, value=1, step=1)
+    bonus_4_wins = st.sidebar.number_input("Points for 4+ wins same day", min_value=0, max_value=5, value=2, step=1)
+    
+    # Display current bonus configuration
+    st.sidebar.write(f"**Current Bonus:**")
+    st.sidebar.write(f"🎯 3 wins same day = +{bonus_3_wins} bonus point(s)")
+    st.sidebar.write(f"🌟 4+ wins same day = +{bonus_4_wins} bonus point(s)")
     
     # Add a separator
     st.sidebar.markdown("---")
@@ -488,7 +561,7 @@ def main():
             # Process data
             with st.spinner("Processing data..."):
                 player_stats, all_dates, draws_detected = load_and_process_data(
-                    df, win_points, draw_points, loss_points
+                    df, win_points, draw_points, loss_points, bonus_3_wins, bonus_4_wins
                 )
             
             # DEBUG: Display draws detected
@@ -511,6 +584,10 @@ def main():
             summary_data = []
             for player in sorted(player_stats.keys()):
                 stats = player_stats[player]
+                total_points_with_bonus = stats['total_points'] + stats['bonus_points']
+                matches_played = stats['wins'] + stats['draws'] + stats['losses']
+                avg_points = total_points_with_bonus / matches_played if matches_played > 0 else 0
+                
                 summary_data.append({
                     'Player': player,
                     'Wins': stats['wins'],
@@ -518,8 +595,9 @@ def main():
                     'Losses': stats['losses'],
                     'Total Points': stats['total_points'],
                     'Bonus Points': stats['bonus_points'],
-                    'Total (with Bonus)': stats['total_points'] + stats['bonus_points'],
-                    'Matches Played': stats['wins'] + stats['draws'] + stats['losses']
+                    'Total (with Bonus)': total_points_with_bonus,
+                    'Matches Played': matches_played,
+                    'Avg Points/Game': round(avg_points, 2)
                 })
             
             summary_df = pd.DataFrame(summary_data)
@@ -534,7 +612,7 @@ def main():
             
             # Chart 2: Points and Bonus Points
             st.header("📈 Chart 2: Total Points and Bonus Points")
-            st.markdown(f"**Points System:** Win = {win_points} pts, Draw = {draw_points} pts, Loss = {loss_points} pts  \n**Bonus System:** 3 wins same day = +1 bonus, 4+ wins same day = +2 bonus")
+            st.markdown(f"**Points System:** Win = {win_points} pts, Draw = {draw_points} pts, Loss = {loss_points} pts  \n**Bonus System:** 3 wins same day = +{bonus_3_wins} bonus, 4+ wins same day = +{bonus_4_wins} bonus")
             fig2 = create_chart2_points_stacked(player_stats, win_points, draw_points, loss_points)
             st.plotly_chart(fig2, use_container_width=True)
             
@@ -543,6 +621,15 @@ def main():
             st.markdown("🟢 **Green dot** = Played (shows W/D/L counts)  \n⭕ **Red empty dot** = Did not play")
             fig3 = create_chart3_timeline_detailed(df, player_stats, all_dates)
             st.plotly_chart(fig3, use_container_width=True)
+            
+            # Chart 4: Average Points per Participation
+            st.header("📈 Chart 4: Average Points per Participation")
+            st.markdown("**Shows efficiency: Total Points ÷ Matches Played**")
+            fig4 = create_chart4_average_points(player_stats)
+            if fig4 is not None:
+                st.plotly_chart(fig4, use_container_width=True)
+            else:
+                st.info("No data available to calculate average points.")
             
         except Exception as e:
             st.error(f"Error processing file: {str(e)}")
