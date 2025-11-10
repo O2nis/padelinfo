@@ -68,7 +68,7 @@ def clean_score(score_value):
     except (ValueError, TypeError):
         return None
 
-def load_and_process_data(df):
+def load_and_process_data(df, win_points=3, draw_points=2, loss_points=1):
     """
     Process the padel match data and calculate statistics.
     """
@@ -154,12 +154,13 @@ def load_and_process_data(df):
                 if result_team1 == 'win':
                     player_stats[player]['wins'] += 1
                     player_stats[player]['wins_by_date'][date] += 1
-                    player_stats[player]['total_points'] += 3
+                    player_stats[player]['total_points'] += win_points
                 elif result_team1 == 'draw':
                     player_stats[player]['draws'] += 1
-                    player_stats[player]['total_points'] += 1
+                    player_stats[player]['total_points'] += draw_points
                 else:  # loss
                     player_stats[player]['losses'] += 1
+                    player_stats[player]['total_points'] += loss_points
         
         # Update statistics for Team2
         for player in team2:
@@ -168,12 +169,13 @@ def load_and_process_data(df):
                 if result_team2 == 'win':
                     player_stats[player]['wins'] += 1
                     player_stats[player]['wins_by_date'][date] += 1
-                    player_stats[player]['total_points'] += 3
+                    player_stats[player]['total_points'] += win_points
                 elif result_team2 == 'draw':
                     player_stats[player]['draws'] += 1
-                    player_stats[player]['total_points'] += 1
+                    player_stats[player]['total_points'] += draw_points
                 else:  # loss
                     player_stats[player]['losses'] += 1
+                    player_stats[player]['total_points'] += loss_points
     
     # Calculate bonus points
     for player in player_stats:
@@ -249,7 +251,7 @@ def create_chart1_wld_stacked(player_stats):
     
     return fig
 
-def create_chart2_points_stacked(player_stats):
+def create_chart2_points_stacked(player_stats, win_points=3, draw_points=2, loss_points=1):
     """
     Chart 2: Horizontal stacked bar chart showing total points and bonus points (sorted by total points, HIGHEST ON TOP).
     """
@@ -289,7 +291,7 @@ def create_chart2_points_stacked(player_stats):
     
     fig.update_layout(
         barmode='stack',
-        title='Total Points and Bonus Points per Player (Sorted by Total - Highest on Top)',
+        title=f'Total Points (Win={win_points}, Draw={draw_points}, Loss={loss_points}) and Bonus Points per Player (Sorted by Total - Highest on Top)',
         xaxis_title='Points',
         yaxis=dict(
             title='Players',
@@ -443,6 +445,32 @@ def main():
     st.title("🎾 Padel Statistics Dashboard")
     st.markdown("Upload your Excel file to analyze player statistics, points, and participation timeline.")
     
+    # ===========================
+    # Sidebar - Point Configuration
+    # ===========================
+    st.sidebar.header("⚙️ Point Configuration")
+    st.sidebar.write("Configure points for different match results:")
+    
+    # Default point values - using your requested defaults
+    win_points = st.sidebar.number_input("Points for Win", min_value=0, max_value=10, value=3, step=1)
+    draw_points = st.sidebar.number_input("Points for Draw", min_value=0, max_value=10, value=2, step=1)
+    loss_points = st.sidebar.number_input("Points for Loss", min_value=0, max_value=10, value=1, step=1)
+    
+    # Display current configuration
+    st.sidebar.write(f"**Current Configuration:**")
+    st.sidebar.write(f"🏆 Win: {win_points} points")
+    st.sidebar.write(f"🤝 Draw: {draw_points} points") 
+    st.sidebar.write(f"😔 Loss: {loss_points} points")
+    st.sidebar.write(f"🎁 Bonus: Daily wins bonus system")
+    
+    # Bonus system configuration
+    st.sidebar.write(f"**Bonus System:**")
+    st.sidebar.write(f"🎯 3 wins same day = +1 bonus point")
+    st.sidebar.write(f"🌟 4+ wins same day = +2 bonus points")
+    
+    # Add a separator
+    st.sidebar.markdown("---")
+    
     # File uploader
     uploaded_file = st.file_uploader("Upload Excel File", type=['xlsx', 'xls'])
     
@@ -459,7 +487,9 @@ def main():
             
             # Process data
             with st.spinner("Processing data..."):
-                player_stats, all_dates, draws_detected = load_and_process_data(df)
+                player_stats, all_dates, draws_detected = load_and_process_data(
+                    df, win_points, draw_points, loss_points
+                )
             
             # DEBUG: Display draws detected
             if draws_detected:
@@ -504,8 +534,8 @@ def main():
             
             # Chart 2: Points and Bonus Points
             st.header("📈 Chart 2: Total Points and Bonus Points")
-            st.markdown("**Points System:** Win = 3 pts, Draw = 1 pt, Loss = 0 pts  \n**Bonus System:** 3 wins same day = +1 bonus, 4+ wins same day = +2 bonus")
-            fig2 = create_chart2_points_stacked(player_stats)
+            st.markdown(f"**Points System:** Win = {win_points} pts, Draw = {draw_points} pts, Loss = {loss_points} pts  \n**Bonus System:** 3 wins same day = +1 bonus, 4+ wins same day = +2 bonus")
+            fig2 = create_chart2_points_stacked(player_stats, win_points, draw_points, loss_points)
             st.plotly_chart(fig2, use_container_width=True)
             
             # Chart 3: Timeline
